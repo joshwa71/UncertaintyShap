@@ -30,14 +30,25 @@ def f(x):
 
 imdb_train = nlp.load_dataset("imdb")["train"]
 
-# build an explainer using a token masker
+background = 1000
+test_reviews = []
+for i in range(background):
+    if len(imdb_train[i]['text']) < 300:
+        test_reviews.append(i)
+
+subset = imdb_train.select(test_reviews)
+
+#build an explainer using a token masker
 explainer = shap.Explainer(f, tokenizer)
 
 # explain the model's predictions on IMDB reviews
+shap_values = explainer(subset)
 
-shap_values = explainer(imdb_train[:10])
+for i in range(len(shap_values)):
+    uncertainty = shap_values[i].base_values + np.sum(shap_values[i].values)
+    if uncertainty > 0.5:
+        file = open(str(i) + '.html','w')
+        file.write(shap.plots.text(shap_values[i], display=False))
+        file.close
 
-for i in range(10):
-    file = open(str(i) + '.html','w')
-    file.write(shap.plots.text(shap_values[1], display=False))
-    file.close
+

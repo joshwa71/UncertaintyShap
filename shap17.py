@@ -31,6 +31,42 @@ class Net(nn.Module):
             nn.Softmax(dim=1)
         )
 
+    def entropy(self, x):
+        _x = x
+        logx = torch.log(_x)
+        out = _x * logx
+        out = torch.sum(out, 1)
+        out = out[:, None]
+        return -out
+
+    def forward(self, x):
+        x = self.conv_layers(x)
+        x = x.view(-1, 320)
+        x = self.fc_layers(x)
+        #x = self.entropy(x)
+        return x
+
+
+class EntropyNet(nn.Module):
+    def __init__(self):
+        super(EntropyNet, self).__init__()
+
+        self.conv_layers = nn.Sequential(
+            nn.Conv2d(1, 10, kernel_size=5),
+            nn.MaxPool2d(2),
+            nn.ReLU(),
+            nn.Conv2d(10, 20, kernel_size=5),
+            nn.Dropout(),
+            nn.MaxPool2d(2),
+            nn.ReLU(),
+        )
+        self.fc_layers = nn.Sequential(
+            nn.Linear(320, 50),
+            nn.ReLU(),
+            nn.Dropout(),
+            nn.Linear(50, 2),
+            nn.Softmax(dim=1)
+        )
 
     def entropy(self, x):
         _x = x
@@ -46,6 +82,8 @@ class Net(nn.Module):
         x = self.fc_layers(x)
         x = self.entropy(x)
         return x
+
+
 
 def train(model, device, train_loader, optimizer, epoch):
     model.train()
@@ -139,8 +177,9 @@ if __name__ == '__main__':
     test_loader = torch.utils.data.DataLoader(test_subset, batch_size=batch_size, shuffle=True)
 
 
-    model = Net().to(device)
-    optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.5)
+    entropyModel = EntropyNet().to(device)
+    meanModel = Net().to(device)
+    optimizer = optim.SGD(entropyModel.parameters(), lr=0.01, momentum=0.5)
 
     batch = next(iter(test_loader))
     images, _ = batch
@@ -149,33 +188,42 @@ if __name__ == '__main__':
 
     if mode == 'train':
         for epoch in range(1, num_epochs + 1):
-            train(model, device, train_loader, optimizer, epoch)
-            test(model, device, test_loader)
-        torch.save(model.state_dict(), path)
+            train(meanModel, device, train_loader, optimizer, epoch)
+            test(meanModel, device, test_loader)
+        torch.save(meanModel.state_dict(), path)
 
     if mode == 'test':
-        model.load_state_dict(torch.load(path))
-        model.eval()
-        entropies = model(background)
+        meanModel.load_state_dict(torch.load(path))
+        meanModel.eval()
+        entropyModel.load_state_dict(torch.load(path))
+        entropyModel.eval()
+        entropies = entropyModel(background)
         mean_entropy = torch.mean(entropies)
         max_entropy = torch.topk(entropies.flatten(), 5)
-        indices_cpu = max_entropy.indices.to(torch.device('cpu'))
 
+        indices_cpu = max_entropy.indices.to(torch.device('cpu'))
         test_images = images[indices_cpu].to(device)
-        test_entropies = model(test_images)
+        test_entropies = entropyModel(test_images)
         norm_entropies = test_entropies - mean_entropy
 
-        e = shap.DeepExplainer(model, background)
+        e1 = shap.DeepExplainer(entropyModel, background)
+        e2 = shap.DeepExplainer(meanModel, background)
         
-        shap_values = e.shap_values(test_images)
+        shap_values_entropy = e1.shap_values(test_images)
+        shap_values_entropy = np.asarray(shap_values_entropy)
 
-        shap_values = np.asarray(shap_values)
+        shap_values_mean = e2.shap_values(test_images)
+        shap_values_mean = np.asarray(shap_values_mean)
 
         test_images_cpu = test_images.to(torch.device('cpu'))
 
-        shap_numpy = np.swapaxes(np.swapaxes(shap_values, 1, -1), 1, 2)
-        test_numpy = np.swapaxes(np.swapaxes(np.asarray(test_images_cpu), 1, -1), 1, 2)
-        shap.image_plot(shap_numpy, -test_numpy)
+        shap_entropy_numpy = np.swapaxes(np.swapaxes(shap_values_entropy, 1, -1), 1, 2)
+        test_entropy_numpy = np.swapaxes(np.swapaxes(np.asarray(test_images_cpu), 1, -1), 1, 2)
+        shap.image_plot(shap_entropy_numpy, -test_entropy_numpy)
+
+        shap_mean_numpy = [np.swapaxes(np.swapaxes(s, 1, -1), 1, 2) for s in shap_values_mean]
+        test_mean_numpy = np.swapaxes(np.swapaxes(np.asarray(test_images_cpu), 1, -1), 1, 2)
+        shap.image_plot(shap_mean_numpy, -test_mean_numpy)
 
 
     #print(max_entropy.indices)
