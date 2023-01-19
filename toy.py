@@ -170,7 +170,9 @@ if __name__ == '__main__':
     batch = next(iter(test_loader))
     images, _ = batch
 
-    background = images[0:100].to(device)    
+    background = images[0:100].to(device)
+
+    print(background.shape)    
 
     if mode == 'train':
         for epoch in range(1, num_epochs + 1):
@@ -198,6 +200,8 @@ if __name__ == '__main__':
         shap_values_entropy = e1.shap_values(test_images)
         shap_values_entropy = np.asarray(shap_values_entropy)
 
+        print(shap_values_entropy.shape)
+
         shap_values_mean = e2.shap_values(test_images)
         shap_values_mean = np.asarray(shap_values_mean)
 
@@ -206,10 +210,17 @@ if __name__ == '__main__':
         shap_entropy_numpy = np.swapaxes(np.swapaxes(shap_values_entropy, 1, -1), 1, 2)
         test_entropy_numpy = np.swapaxes(np.swapaxes(np.asarray(test_images_cpu), 1, -1), 1, 2)
         shap.image_plot(shap_entropy_numpy, -test_entropy_numpy)
+        print(test_entropy_numpy.shape)
+
+
+        shap_mean_numpy = np.asarray(shap_values_mean)
 
         shap_mean_numpy = [np.swapaxes(np.swapaxes(s, 1, -1), 1, 2) for s in shap_values_mean]
         test_mean_numpy = np.swapaxes(np.swapaxes(np.asarray(test_images_cpu), 1, -1), 1, 2)
+        
         shap.image_plot(shap_mean_numpy, -test_mean_numpy)
+
+        
 
 
     #print(max_entropy.indices)

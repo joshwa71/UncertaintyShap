@@ -20,6 +20,7 @@ def entropy(x):
     out = np.sum(plogp, axis=1)
     return -out
 
+
 def f(x):
     tv = torch.tensor([tokenizer.encode(v, pad_to_max_length=True, max_length=500) for v in x]).cuda()
     outputs = model(tv)[0].detach().cpu().numpy()
