@@ -51,5 +51,3 @@ for i in range(len(shap_values)):
         file = open(str(i) + '.html','w')
         file.write(shap.plots.text(shap_values[i], display=False))
         file.close
-
-
