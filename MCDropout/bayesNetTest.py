@@ -160,7 +160,8 @@ if __name__ == '__main__':
     if mode == 'test':
         variance = get_monte_carlo_predictions(images)
         e1 = shap.DeepExplainer(model, background)
-        shap_values = e1.shap_values(images[:10])
+        shap_values = e1.shap_values(images[:10]) #change this for different samples
+        
         shap_values = np.asarray(shap_values)
 
         test_images_cpu = images[:10].to(torch.device('cpu'))
