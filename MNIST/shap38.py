@@ -83,7 +83,7 @@ def test(model, device, test_loader):
 if __name__ == '__main__':
 
     mode = 'test'
-    path = r"C:\Users\joshu\Documents\ArtificialIntelligence\MetaSHAP\models\model38.pth"
+    path = r"..\models\model38.pth"
 
     # train_loader = torch.utils.data.DataLoader(
     #     datasets.MNIST('mnist_data', train=True, download=True,

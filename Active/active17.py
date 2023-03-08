@@ -15,7 +15,7 @@ batch_size = 128
 num_epochs = 30
 device = torch.device('cuda')
 mode = 'test'
-path = r"C:\Users\joshu\Documents\ArtificialIntelligence\MetaSHAP\models\modelActive17.pth"
+path = r"..\models\modelActive17.pth"
 
 class Net(nn.Module):
     def __init__(self):
@@ -245,28 +245,6 @@ if __name__ == '__main__':
         shap_mean_numpy = [np.swapaxes(np.swapaxes(s, 1, -1), 1, 2) for s in shap_values_mean]
         test_mean_numpy = np.swapaxes(np.swapaxes(np.asarray(test_images_cpu), 1, -1), 1, 2)
         shap.image_plot(shap_mean_numpy, -test_mean_numpy)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#359, 677, 678, 681, 730
-
-
-
 
 
 

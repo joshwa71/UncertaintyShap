@@ -15,6 +15,8 @@ class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
 
+        self.forward_passes = 10
+
         self.conv_layers = nn.Sequential(
             nn.Conv2d(1, 10, kernel_size=5),
             nn.MaxPool2d(2),
@@ -35,54 +37,46 @@ class Net(nn.Module):
         )
 
     def forward(self, x):
-        x = self.conv_layers(x)
-        x = x.view(-1, 320)
-        x = self.fc_layers(x)
+        # x = self.conv_layers(x)
+        # x = x.view(-1, 320)
+        # x = self.fc_layers(x)
+        x = self.get_monte_carlo_predictions(x, x.size()[0], self.forward_passes)
         return x
     
-def enable_dropout(model):
-    """ Function to enable the dropout layers during test-time """
-    for m in model.modules():
-        if m.__class__.__name__.startswith('Dropout'):
-            print('Dropout!')
-            m.train()
+    def enable_dropout(self):
+        """ Function to enable the dropout layers during test-time """
+        for m in self.modules():
+            if m.__class__.__name__.startswith('Dropout'):
+                m.train()
 
+    def get_monte_carlo_predictions(self, x, batch, forward_passes):
+        n_classes = 2
+        n_samples = batch
+        dropout_predictions = torch.empty((0, n_samples, n_classes), device=device)
+        for i in range(forward_passes):
+            predictions = torch.empty((0, n_classes), device=device)
+            self.enable_dropout()
+            conv_out = self.conv_layers(x)
+            reshape_out = conv_out.view(-1, 320)
+            predictions = self.fc_layers(reshape_out)
+            dropout_predictions = torch.cat((dropout_predictions, predictions.unsqueeze(0)), dim=0)
+            #print(dropout_predictions.size())
 
-def get_monte_carlo_predictions(data_loader, forward_passes, model, n_classes, n_samples):
-    dropout_predictions = np.empty((0, n_samples, n_classes))
-    softmax = nn.Softmax(dim=1)
-    for i in range(forward_passes):
-        predictions = np.empty((0, n_classes))
-        model.eval()
-        enable_dropout(model)
-        for i, (image, label) in enumerate(data_loader):
-            image = image.to(torch.device('cuda'))
-            with torch.no_grad():
-                output = model(image)
-                output = softmax(output) # shape (n_samples, n_classes)
-            predictions = np.vstack((predictions, output.cpu().numpy()))
-            print(predictions[np.newaxis, :, :].shape)
-        print(dropout_predictions.shape)
-        dropout_predictions = np.vstack((dropout_predictions,
-                                         predictions[np.newaxis, :, :]))
-        # dropout predictions - shape (forward_passes, n_samples, n_classes)
-    
-    # Calculating mean across multiple MCD forward passes 
-    mean = np.mean(dropout_predictions, axis=0) # shape (n_samples, n_classes)
+        # Calculating mean across multiple MCD forward passes 
+        mean = dropout_predictions.mean(dim=0) # shape (n_samples, n_classes)
 
-    # Calculating variance across multiple MCD forward passes 
-    variance = np.var(dropout_predictions, axis=0) # shape (n_samples, n_classes)
+        # Calculating variance across multiple MCD forward passes 
+        variance = dropout_predictions.var(dim=0) # shape (n_samples, n_classes)
 
-    epsilon = sys.float_info.min
-    # Calculating entropy across multiple MCD forward passes 
-    entropy = -np.sum(mean*np.log(mean + epsilon), axis=-1) # shape (n_samples,)
+        epsilon = torch.finfo(torch.float32).eps
+        # Calculating entropy across multiple MCD forward passes 
+        entropy = -torch.sum(mean * torch.log(mean + epsilon), dim=-1) # shape (n_samples,)
 
-    # Calculating mutual information across multiple MCD forward passes 
-    mutual_info = entropy - np.mean(np.sum(-dropout_predictions*np.log(dropout_predictions + epsilon),
-                                            axis=-1), axis=0) # shape (n_samples,)
-    
-    return mean, variance, entropy, mutual_info
-
+        # Calculating mutual information across multiple MCD forward passes 
+        mutual_info = entropy - torch.mean(torch.sum(-dropout_predictions*torch.log(dropout_predictions + epsilon),
+                                                dim=-1), dim=0) # shape (n_samples,)
+        #return entropy
+        return mean
 
 def train(model, device, train_loader, optimizer, epoch):
     model.train()
@@ -100,33 +94,10 @@ def train(model, device, train_loader, optimizer, epoch):
 
 
 
-
-
-
-
-# def test(model, device, test_loader):
-#     model.eval()
-#     test_loss = 0
-#     correct = 0
-#     with torch.no_grad():
-#         for data, target in test_loader:
-#             data, target = data.to(device), target.to(device)
-#             output = model(data)
-#             test_loss += F.nll_loss(output.log(), target).item() # sum up batch loss
-#             pred = output.max(1, keepdim=True)[1] # get the index of the max log-probability
-#             correct += pred.eq(target.view_as(pred)).sum().item()
-
-#     test_loss /= len(test_loader.dataset)
-#     print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-#         test_loss, correct, len(test_loader.dataset),
-#     100. * correct / len(test_loader.dataset)))
-
-
-
 if __name__ == '__main__':
 
     mode = 'test'
-    path = r"C:\Users\joshu\Documents\ArtificialIntelligence\MetaSHAP\models\MCDropout.pth"
+    path = r"..\models\MCDropout.pth"
     #train
     train_dataset = datasets.MNIST('mnist_data', train=True, download=True, transform=transforms.Compose([
                         transforms.ToTensor()
@@ -173,7 +144,8 @@ if __name__ == '__main__':
     batch = next(iter(test_loader))
     images, _ = batch
 
-    background = images[0:100].to(device)    
+    background = images[0:100].to(device)
+    test_images = images[0:2]    
 
     if mode == 'train':
         for epoch in range(1, num_epochs + 1):
@@ -182,7 +154,12 @@ if __name__ == '__main__':
         torch.save(meanModel.state_dict(), path)
 
     if mode == 'test':
-        mean, variance, entropy, mutual_info = get_monte_carlo_predictions(test_loader, 10, meanModel, 2, len(test_subset))
-        print(mean.shape)
-        print(variance.shape)
-        print(entropy.shape)
+        meanModel.load_state_dict(torch.load(path))
+        # mean = meanModel(images[0].to(device))
+        # print(mean)
+        explainer = shap.DeepExplainer(meanModel, background)
+        shap_values = explainer.shap_values(test_images)
+        
+        shap_numpy = [np.swapaxes(np.swapaxes(s, 1, -1), 1, 2) for s in shap_values]
+        test_numpy = np.swapaxes(np.swapaxes(test_images.numpy(), 1, -1), 1, 2)
+        shap.image_plot(shap_numpy, -test_numpy)
